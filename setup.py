@@ -10,7 +10,7 @@ setup(name='cai',
       description='K-CAI NEURAL API',
       long_description=long_description,
       author='Joao Paulo Schwarz Schuler',
-      url='https://github.com/joaopauloschuler/k-neural-api',
+      url='https://github.com/Hussain-SZ/k-neural-api.git',
       install_requires=[ # 'tensorflow>=2.2.0', # leaving this as a require sometimes replaces tensorflow
                         'pandas>=0.22.0',
                         'scikit-image>=0.15.0',
