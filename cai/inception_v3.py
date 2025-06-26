@@ -46,7 +46,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
-
+from . import attention 
 import cai.layers
 from cai.layers import conv2d_bn
 import cai.util
@@ -683,7 +683,13 @@ def two_path_inception_v3(
                     compression=deep_two_paths_compression, has_batch_norm=True, kType=kType)
             else:
                 x = create_inception_v3_mixed_layer(x,  id=id_layer,  name='mixed'+str(id_layer), channel_axis=channel_axis, kType=kType)
-    
+
+            # --- ADDING THE FOLLOWING IF-BLOCK ---
+            # Add the CBAM block after the 'mixed5' layer has been created.
+            if id_layer == 5:
+                print("Applying CBAM block after mixed5...")
+                x = attention.cbam_block(x)
+            # ------------------------------------
     if include_top:
         # Classification block
         x = keras.layers.GlobalAveragePooling2D(name='avg_pool')(x)

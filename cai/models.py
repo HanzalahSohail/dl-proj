@@ -4,6 +4,7 @@ import cai.inception_v3
 from tensorflow import keras
 from tensorflow.keras.models import Model
 from tensorflow.keras.models import model_from_json
+from . import attention
 import numpy as np
 
 def save_model(model, base_name):
