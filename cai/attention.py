@@ -43,8 +43,17 @@ def spatial_attention(input_feature, kernel_size=7):
     """
     cbam_feature = input_feature
     
-    avg_pool = layers.Lambda(lambda x: tf.reduce_mean(x, axis=3, keepdims=True))(cbam_feature)
-    max_pool = layers.Lambda(lambda x: tf.reduce_max(x, axis=3, keepdims=True))(cbam_feature)
+    # Define a simple function for the output shape
+    # The shape will be the same as the input but with only 1 channel
+    def spatial_output_shape(input_shape):
+        return input_shape[:-1] + (1,)
+
+    avg_pool = layers.Lambda(lambda x: tf.reduce_mean(x, axis=3, keepdims=True),
+                             output_shape=spatial_output_shape)(cbam_feature) # <-- ADD output_shape
+                             
+    max_pool = layers.Lambda(lambda x: tf.reduce_max(x, axis=3, keepdims=True),
+                             output_shape=spatial_output_shape)(cbam_feature) # <-- ADD output_shape
+
     concat = layers.Concatenate(axis=3)([avg_pool, max_pool])
     
     cbam_feature = layers.Conv2D(filters=1,
