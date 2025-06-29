@@ -3,6 +3,15 @@
 import tensorflow as tf
 from tensorflow.keras import layers, initializers
 
+# --- HELPER FUNCTION MOVED TO THE TOP-LEVEL ---
+# By being a global function in the module, Keras can find it during model loading.
+def spatial_output_shape(input_shape):
+    """
+    Calculates the output shape for spatial attention, which is (batch, height, width, 1).
+    """
+    return input_shape[:-1] + (1,)
+# --------------------------------------------
+
 def channel_attention(input_feature, ratio=8):
     """
     Applies Channel Attention to the input feature map.
@@ -19,19 +28,16 @@ def channel_attention(input_feature, ratio=8):
                                     use_bias=True,
                                     bias_initializer='zeros')
     
-    # Average Pooling
     avg_pool = layers.GlobalAveragePooling2D()(input_feature)
     avg_pool = layers.Reshape((1, 1, channel))(avg_pool)
     avg_pool = shared_layer_one(avg_pool)
     avg_pool = shared_layer_two(avg_pool)
     
-    # Max Pooling
     max_pool = layers.GlobalMaxPooling2D()(input_feature)
     max_pool = layers.Reshape((1, 1, channel))(max_pool)
     max_pool = shared_layer_one(max_pool)
     max_pool = shared_layer_two(max_pool)
     
-    # Add and apply sigmoid
     cbam_feature = layers.Add()([avg_pool, max_pool])
     cbam_feature = layers.Activation('sigmoid')(cbam_feature)
     
@@ -42,17 +48,13 @@ def spatial_attention(input_feature, kernel_size=7):
     Applies Spatial Attention to the input feature map.
     """
     cbam_feature = input_feature
-    
-    # Define a simple function for the output shape
-    # The shape will be the same as the input but with only 1 channel
-    def spatial_output_shape(input_shape):
-        return input_shape[:-1] + (1,)
 
+    # The Lambda layers now correctly reference the top-level helper function
     avg_pool = layers.Lambda(lambda x: tf.reduce_mean(x, axis=3, keepdims=True),
-                             output_shape=spatial_output_shape)(cbam_feature) # <-- ADD output_shape
+                             output_shape=spatial_output_shape)(cbam_feature)
                              
     max_pool = layers.Lambda(lambda x: tf.reduce_max(x, axis=3, keepdims=True),
-                             output_shape=spatial_output_shape)(cbam_feature) # <-- ADD output_shape
+                             output_shape=spatial_output_shape)(cbam_feature)
 
     concat = layers.Concatenate(axis=3)([avg_pool, max_pool])
     
