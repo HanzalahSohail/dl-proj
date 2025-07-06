@@ -52,6 +52,7 @@ from cai.layers import conv2d_bn
 import cai.util
 from tensorflow import keras
 from tensorflow.keras.models import Model
+from . import color_layers
 
 def InceptionV3(include_top=True,
                 weights='imagenet',
@@ -550,131 +551,52 @@ def two_path_inception_v3(
         ValueError: in case of invalid argument for `weights`,
             or invalid input shape.
     """
-    img_input = keras.layers.Input(shape=input_shape)
-    if (deep_two_paths):  max_mix_deep_two_paths_idx = max_mix_idx
+    img_input = keras.layers.Input(shape=input_shape, name='rgb_input')
 
+    # --- Path 1: RGB Branch ---
+    # Process the raw RGB input directly
+    print("Creating RGB Path...")
+    rgb_branch = conv2d_bn(img_input, 32, 3, 3, strides=(2, 2), padding='valid')
+    rgb_branch = conv2d_bn(rgb_branch, 32, 3, 3, padding='valid')
+    rgb_branch = conv2d_bn(rgb_branch, 64, 3, 3)
+    rgb_branch = keras.layers.MaxPooling2D((3, 3), strides=(2, 2))(rgb_branch)
+    rgb_branch = conv2d_bn(rgb_branch, 80, 1, 1, padding='valid')
+    rgb_branch = conv2d_bn(rgb_branch, 192, 3, 3, padding='valid')
+    rgb_branch = keras.layers.MaxPooling2D((3, 3), strides=(2, 2))(rgb_branch)
+
+    # --- Convert to LAB and create other paths ---
+    print("Creating LAB Paths...")
+    # Convert the RGB input to LAB inside the model
+    lab_tensor = color_layers.RgbToLab(name='rgb_to_lab')(img_input)
+
+    # --- Path 2: L (Lightness) Branch ---
+    l_branch = cai.layers.CopyChannels(0, 1, name='copy_L_channel')(lab_tensor)
+    l_branch = conv2d_bn(l_branch, 32, 3, 3, strides=(2, 2), padding='valid')
+    l_branch = conv2d_bn(l_branch, 32, 3, 3, padding='valid')
+    l_branch = conv2d_bn(l_branch, 64, 3, 3)
+    l_branch = keras.layers.MaxPooling2D((3, 3), strides=(2, 2))(l_branch)
+    l_branch = conv2d_bn(l_branch, 80, 1, 1, padding='valid')
+    l_branch = conv2d_bn(l_branch, 192, 3, 3, padding='valid')
+    l_branch = keras.layers.MaxPooling2D((3, 3), strides=(2, 2))(l_branch)
+
+    # --- Path 3: a*b* (Color) Branch ---
+    ab_branch = cai.layers.CopyChannels(1, 2, name='copy_ab_channels')(lab_tensor)
+    ab_branch = conv2d_bn(ab_branch, 32, 3, 3, strides=(2, 2), padding='valid')
+    ab_branch = conv2d_bn(ab_branch, 32, 3, 3, padding='valid')
+    ab_branch = conv2d_bn(ab_branch, 64, 3, 3)
+    ab_branch = keras.layers.MaxPooling2D((3, 3), strides=(2, 2))(ab_branch)
+    ab_branch = conv2d_bn(ab_branch, 80, 1, 1, padding='valid')
+    ab_branch = conv2d_bn(ab_branch, 192, 3, 3, padding='valid')
+    ab_branch = keras.layers.MaxPooling2D((3, 3), strides=(2, 2))(ab_branch)
+
+    # --- Concatenate all three paths ---
+    print("Concatenating RGB, L, and a*b* paths...")
     if keras.backend.image_data_format() == 'channels_first':
         channel_axis = 1
     else:
         channel_axis = 3
     
-    if two_paths_partial_first_block==3:
-        two_paths_partial_first_block=0
-        two_paths_first_block=True
-        two_paths_second_block=False
-
-    if two_paths_partial_first_block>3:
-        two_paths_partial_first_block=0
-        two_paths_first_block=True
-        two_paths_second_block=True
-
-    if (two_paths_second_block):
-        two_paths_first_block=True
-    
-    include_first_block=True
-    if (two_paths_partial_first_block==1) or (two_paths_partial_first_block==2):
-        two_paths_second_block=False
-        two_paths_first_block=False
-        include_first_block=False
-
-        # Only 1 convolution with two-paths?
-        if (two_paths_partial_first_block==1):
-            if (l_ratio>0):
-                l_branch = cai.layers.CopyChannels(0,1)(img_input)
-                l_branch = conv2d_bn(l_branch, int(round(32*l_ratio)), 3, 3, strides=(2, 2), padding='valid')
-
-            if (ab_ratio>0):
-                ab_branch = cai.layers.CopyChannels(1,2)(img_input)
-                ab_branch = conv2d_bn(ab_branch, int(round(32*ab_ratio)), 3, 3, strides=(2, 2), padding='valid')
-
-            if (l_ratio>0):
-                if (ab_ratio>0):
-                    single_branch  = keras.layers.Concatenate(axis=channel_axis, name='concat_partial_first_block1')([l_branch, ab_branch])
-                else:
-                    single_branch = l_branch
-            else:
-                single_branch = ab_branch
-
-            single_branch = conv2d_bn(single_branch, 32, 3, 3, padding='valid')
-            single_branch = conv2d_bn(single_branch, 64, 3, 3)
-            x = keras.layers.MaxPooling2D((3, 3), strides=(2, 2))(single_branch)
-
-        # Only 2 convolution with two-paths?
-        if (two_paths_partial_first_block==2):
-            if (l_ratio>0):
-                l_branch = cai.layers.CopyChannels(0,1)(img_input)
-                l_branch = conv2d_bn(l_branch, int(round(32*l_ratio)), 3, 3, strides=(2, 2), padding='valid')
-                l_branch = conv2d_bn(l_branch, int(round(32*l_ratio)), 3, 3, padding='valid')
-
-            if (ab_ratio>0):
-                ab_branch = cai.layers.CopyChannels(1,2)(img_input)
-                ab_branch = conv2d_bn(ab_branch, int(round(32*ab_ratio)), 3, 3, strides=(2, 2), padding='valid')
-                ab_branch = conv2d_bn(ab_branch, int(round(32*ab_ratio)), 3, 3, padding='valid')
-
-            if (l_ratio>0):
-                if (ab_ratio>0):
-                    single_branch = keras.layers.Concatenate(axis=channel_axis, name='concat_partial_first_block2')([l_branch, ab_branch])
-                else:
-                    single_branch = l_branch
-            else:
-                single_branch = ab_branch
-
-            single_branch = conv2d_bn(single_branch, 64, 3, 3)
-            x = keras.layers.MaxPooling2D((3, 3), strides=(2, 2))(single_branch)
-
-    if include_first_block:
-        if two_paths_first_block:
-            if (l_ratio>0):
-                l_branch = cai.layers.CopyChannels(0,1)(img_input)
-                l_branch = conv2d_bn(l_branch, int(round(32*l_ratio)), 3, 3, strides=(2, 2), padding='valid')
-                l_branch = conv2d_bn(l_branch, int(round(32*l_ratio)), 3, 3, padding='valid')
-                l_branch = conv2d_bn(l_branch, int(round(64*l_ratio)), 3, 3)
-                l_branch = keras.layers.MaxPooling2D((3, 3), strides=(2, 2))(l_branch)
-
-            if (ab_ratio>0):
-                ab_branch = cai.layers.CopyChannels(1,2)(img_input)
-                ab_branch = conv2d_bn(ab_branch, int(round(32*ab_ratio)), 3, 3, strides=(2, 2), padding='valid')
-                ab_branch = conv2d_bn(ab_branch, int(round(32*ab_ratio)), 3, 3, padding='valid')
-                ab_branch = conv2d_bn(ab_branch, int(round(64*ab_ratio)), 3, 3)
-                ab_branch = keras.layers.MaxPooling2D((3, 3), strides=(2, 2))(ab_branch)
-            
-            if (l_ratio>0):
-                if (ab_ratio>0):
-                    x = keras.layers.Concatenate(axis=channel_axis, name='concat_first_block')([l_branch, ab_branch])
-                else:
-                    x = l_branch
-            else:
-                x = ab_branch
-        else:
-            single_branch = conv2d_bn(img_input, 32, 3, 3, strides=(2, 2), padding='valid')
-            single_branch = conv2d_bn(single_branch, 32, 3, 3, padding='valid')
-            single_branch = conv2d_bn(single_branch, 64, 3, 3)
-            single_branch = keras.layers.MaxPooling2D((3, 3), strides=(2, 2))(single_branch)
-            # print('single path first block')
-            x = single_branch
-
-    if (two_paths_second_block):
-      #l_branch    = conv2d_bn(x, int(round(80*deep_two_paths_bottleneck_compression)), 1, 1, padding='valid', name='second_block_ta', activation=None, has_batch_norm=True)
-      #ab_branch = conv2d_bn(x, int(round(80*deep_two_paths_bottleneck_compression)), 1, 1, padding='valid', name='second_block_tb', activation=None, has_batch_norm=True)
-      l_branch    = create_inception_path(last_tensor=x, compression=deep_two_paths_bottleneck_compression, channel_axis=channel_axis, name='second_block_ta', activation=None, has_batch_norm=True, kType=kType)
-      ab_branch = create_inception_path(last_tensor=x, compression=deep_two_paths_bottleneck_compression, channel_axis=channel_axis, name='second_block_tb', activation=None, has_batch_norm=True, kType=kType)
-      
-      # l_branch    = conv2d_bn(l_branch,    int(round(80 *deep_two_paths_compression)), 1, 1, padding='valid')
-      l_branch = kInceptionPointwise(l_branch, filters=int(round(80 *deep_two_paths_compression)), name='l_branch_path', kType=kType)
-      l_branch    = conv2d_bn(l_branch,    int(round(192*deep_two_paths_compression)), 3, 3, padding='valid')
-      # ab_branch = conv2d_bn(ab_branch, int(round(80 *deep_two_paths_compression)), 1, 1, padding='valid')
-      ab_branch = kInceptionPointwise(ab_branch, filters=int(round(80 *deep_two_paths_compression)), name='ab_branch_path', kType=kType)
-      ab_branch = conv2d_bn(ab_branch, int(round(192*deep_two_paths_compression)), 3, 3, padding='valid')
-      
-      x = keras.layers.Concatenate(axis=channel_axis, name='concat_second_block')([l_branch, ab_branch])
-      x = keras.layers.MaxPooling2D((3, 3), strides=(2, 2))(x)
-    else:
-      # x = conv2d_bn(x, 80, 1, 1, padding='valid')
-      x= kInceptionPointwise(x, filters=80, name='single_path', kType=kType)
-      x = conv2d_bn(x, 192, 3, 3, padding='valid')
-      x = keras.layers.MaxPooling2D((3, 3), strides=(2, 2))(x)
-      # print('single path second block')
-
+    x = keras.layers.Concatenate(axis=channel_axis, name='concatenate_all_paths')([rgb_branch, l_branch, ab_branch])
     if max_mix_idx >= 0:
         for id_layer in range(max_mix_idx+1):
             if (max_mix_deep_two_paths_idx >= id_layer):
