@@ -89,3 +89,39 @@ class CBAMBlock(layers.Layer):
             'kernel_size': self.kernel_size
         })
         return config
+
+
+@tf.keras.utils.register_keras_serializable(package='Cai')
+class CrossAttentionBlock(layers.Layer):
+    def __init__(self, d_model, num_heads=4, **kwargs):
+        super().__init__(**kwargs)
+        self.num_heads = num_heads
+        self.d_model = d_model
+        # You can also use tf.keras.layers.MultiHeadAttention directly
+        self.mha = layers.MultiHeadAttention(
+            num_heads=self.num_heads, key_dim=self.d_model // self.num_heads)
+
+        self.norm1 = layers.LayerNormalization(epsilon=1e-6)
+        self.norm2 = layers.LayerNormalization(epsilon=1e-6)
+        self.ffn = tf.keras.Sequential([
+            layers.Dense(self.d_model * 4, activation='relu'),
+            layers.Dense(self.d_model)
+        ])
+
+    def call(self, feat_q, feat_kv):
+        # reshape to sequences: B, H*W, C
+        B, H, W, C = tf.shape(feat_q)[0], tf.shape(feat_q)[1], tf.shape(feat_q)[2], tf.shape(feat_q)[3]
+        seq_len = H * W
+        q = tf.reshape(feat_q, (B, seq_len, C))
+        kv = tf.reshape(feat_kv, (B, seq_len, C))
+
+        # cross-attention
+        attn_out = self.mha(query=q, value=kv, key=kv)  
+        attn_out = self.norm1(q + attn_out)
+
+        # feed‑forward
+        ffn_out = self.ffn(attn_out)
+        out = self.norm2(attn_out + ffn_out)
+
+        # back to feature‑map shape
+        return tf.reshape(out, (B, H, W, C))

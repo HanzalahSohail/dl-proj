@@ -53,6 +53,8 @@ import cai.util
 from tensorflow import keras
 from tensorflow.keras.models import Model
 from . import color_layers
+from .attention import CBAMBlock, CrossAttentionBlock
+
 
 def InceptionV3(include_top=True,
                 weights='imagenet',
@@ -590,13 +592,26 @@ def two_path_inception_v3(
     ab_branch = keras.layers.MaxPooling2D((3, 3), strides=(2, 2))(ab_branch)
 
     # --- Concatenate all three paths ---
-    print("Concatenating RGB, L, and a*b* paths...")
+    # print("Concatenating RGB, L, and a*b* paths...")
+    print("Attention computing...")
     if keras.backend.image_data_format() == 'channels_first':
         channel_axis = 1
     else:
         channel_axis = 3
     
-    x = keras.layers.Concatenate(axis=channel_axis, name='concatenate_all_paths')([rgb_branch, l_branch, ab_branch])
+    # x = keras.layers.Concatenate(axis=channel_axis, name='concatenate_all_paths')([rgb_branch, l_branch, ab_branch])
+    # --- Cross‑attention between RGB (Q) and L (K/V) ---
+    attn = CrossAttentionBlock(
+        d_model=int(rgb_branch.shape[-1]),   # channel dimension
+        num_heads=4,
+        name='cross_attn'
+    )(rgb_branch, l_branch)
+
+    # --- Fuse attention output with the a*b* branch ---
+    x = keras.layers.Concatenate(axis=channel_axis, name='concat_attn_ab')(
+        [attn, ab_branch]
+    )
+
     if max_mix_idx >= 0:
         for id_layer in range(max_mix_idx+1):
             if (max_mix_deep_two_paths_idx >= id_layer):
