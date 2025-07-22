@@ -623,10 +623,10 @@ def two_path_inception_v3(
 
             # --- ADDING THE FOLLOWING IF-BLOCK ---
             # Add the CBAM block after the 'mixed5' layer has been created.
-            if id_layer == 5:
-                print("Applying CBAM block after mixed5...")
-                # x = attention.cbam_block(x)
-                x = attention.CBAMBlock()(x)
+            # if id_layer == 5:
+            #     print("Applying CBAM block after mixed5...")
+            #     # x = attention.cbam_block(x)
+            #     x = attention.CBAMBlock()(x)
             # ------------------------------------
     if include_top:
         # Classification block
